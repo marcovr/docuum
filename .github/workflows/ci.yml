@@ -8,66 +8,6 @@ defaults:
   run:
     shell: bash
 jobs:
-  ci-linux:
-    name: Build for Linux
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - if: ${{ github.event_name == 'push' }}
-      uses: docker/login-action@v3
-      with:
-        username: stephanmisc
-        password: ${{ secrets.DOCKER_PASSWORD }}
-    - uses: stepchowfun/toast/.github/actions/toast@main
-      with:
-        tasks: build test lint release validate_release run
-        docker_repo: stephanmisc/toast
-        read_remote_cache: true
-        write_remote_cache: ${{ github.event_name == 'push' }}
-    - run: |
-        # Make Bash log commands and not silently ignore errors.
-        set -euxo pipefail
-
-        # The artifact name will contain the target triple, so the file name doesn't need to.
-        mv artifacts/docuum-x86_64-unknown-linux-gnu artifacts/docuum
-    - uses: actions/upload-artifact@v4
-      with:
-        name: x86_64-unknown-linux-gnu
-        path: artifacts/docuum
-        if-no-files-found: error
-    - run: |
-        # Make Bash log commands and not silently ignore errors.
-        set -euxo pipefail
-
-        # The artifact name will contain the target triple, so the file name doesn't need to.
-        mv artifacts/docuum-x86_64-unknown-linux-musl artifacts/docuum
-    - uses: actions/upload-artifact@v4
-      with:
-        name: x86_64-unknown-linux-musl
-        path: artifacts/docuum
-        if-no-files-found: error
-    - run: |
-        # Make Bash log commands and not silently ignore errors.
-        set -euxo pipefail
-
-        # The artifact name will contain the target triple, so the file name doesn't need to.
-        mv artifacts/docuum-aarch64-unknown-linux-gnu artifacts/docuum
-    - uses: actions/upload-artifact@v4
-      with:
-        name: aarch64-unknown-linux-gnu
-        path: artifacts/docuum
-        if-no-files-found: error
-    - run: |
-        # Make Bash log commands and not silently ignore errors.
-        set -euxo pipefail
-
-        # The artifact name will contain the target triple, so the file name doesn't need to.
-        mv artifacts/docuum-aarch64-unknown-linux-musl artifacts/docuum
-    - uses: actions/upload-artifact@v4
-      with:
-        name: aarch64-unknown-linux-musl
-        path: artifacts/docuum
-        if-no-files-found: error
   ci-windows:
     name: Build for Windows
     runs-on: windows-latest
@@ -192,17 +132,13 @@ jobs:
     name: Publish a release if applicable
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    needs: [ci-linux, ci-macos, ci-windows, install-macos, install-ubuntu]
+    needs: [ci-macos, ci-windows, install-macos, install-ubuntu]
     permissions:
       contents: write
     steps:
     - uses: actions/checkout@v4
     - uses: docker/setup-qemu-action@v3 # For building multi-platform images
     - uses: docker/setup-buildx-action@v3 # For building multi-platform images
-    - uses: docker/login-action@v3
-      with:
-        username: stephanmisc
-        password: ${{ secrets.DOCKER_PASSWORD }}
     - uses: actions/download-artifact@v4
       with:
         path: artifacts/
@@ -293,9 +229,3 @@ jobs:
           'artifacts/docuum-x86_64-pc-windows-msvc.exe' \
           'artifacts/docuum-aarch64-pc-windows-msvc.exe'
         echo "Created release v$VERSION_TO_PUBLISH."
-    - uses: stepchowfun/toast/.github/actions/toast@main
-      with:
-        tasks: publish
-        docker_repo: stephanmisc/toast
-      env:
-        CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
