@@ -101,3 +101,5 @@ cp \
 cp \
     target/aarch64-unknown-linux-musl/release/docuum \
     artifacts/docuum-aarch64-unknown-linux-musl
+
+chmod -R 777 artifacts
