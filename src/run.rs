@@ -142,7 +142,7 @@ fn parent_id(state: &State, image_id: &str) -> io::Result<Option<String>> {
 
     // Query Docker for the parent image ID.
     let output = Command::new("docker")
-        .args(["image", "inspect", "--format", "{{.Parent}}", image_id])
+        .args(["image", "inspect", "--format", "{{ if index . \"Parent\" }}{{ index . \"Parent\" }}{{ end }}", image_id])
         .stderr(Stdio::inherit())
         .output()?;
 
