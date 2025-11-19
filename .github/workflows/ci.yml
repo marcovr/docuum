@@ -243,13 +243,6 @@ jobs:
         chmod a+x artifacts/docuum-x86_64-unknown-linux-musl
         chmod a+x artifacts/docuum-aarch64-unknown-linux-musl
     - if: ${{ env.VERSION_TO_PUBLISH != null }}
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        platforms: linux/amd64,linux/arm64
-        tags: stephanmisc/docuum,stephanmisc/docuum:${{ env.VERSION_TO_PUBLISH }}
-    - if: ${{ env.VERSION_TO_PUBLISH != null }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
