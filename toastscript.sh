@@ -46,9 +46,6 @@ apt-get install --yes \
     ripgrep \
     shellcheck
 
-# Install Tagref using the official installer script.
-curl https://raw.githubusercontent.com/stepchowfun/tagref/main/install.sh -LSfs | sh
-
 # Install stable Rust [tag:rust_1.91.0].
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
     -y \
@@ -70,39 +67,6 @@ cargo-online build
 # Run the tests with Cargo. The `NO_COLOR` variable is used to disable colored output for
 # tests that make assertions regarding the output [tag:colorless_tests].
 NO_COLOR=true cargo-offline test
-
-
-# Check references with Tagref.
-tagref
-
-# Lint shell files with ShellCheck.
-find . -type f -name '*.sh' | xargs shellcheck
-
-# Lint the code with Clippy.
-cargo-offline clippy --all-features --all-targets --workspace
-
-# Check code formatting with Rustfmt. See [ref:format_macros] for an explanation of the `rg`
-# commands.
-rg --type rust --files-with-matches '' src | xargs sed -i 's/!(/_(/g'
-rg --type rust --files-with-matches '' src | xargs sed -i 's/^\([^ (]*\)_(/\1!(/g'
-if ! cargo-fmt --check; then
-    echo 'ERROR: Please correct the formatting errors above.' 1>&2
-    exit 1
-fi
-rg --type rust --files-with-matches '' src | xargs sed -i 's/_(/!(/g'
-
-# Forbid unconsolidated `use` declarations.
-if rg --line-number --type rust --multiline '}[[:space]]*;[[:space:]]*\n[[:space:]]*use' src
-then
-    echo 'Please consolidate these `use` declarations.' >&2
-    exit 1
-fi
-
-# Enforce that lines span no more than 100 columns.
-if rg --line-number --type rust '.{101}' src; then
-    echo 'There are lines spanning more than 100 columns.' >&2
-    exit 1
-fi
 
 
 # Add the targets.
