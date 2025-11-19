@@ -1,0 +1,202 @@
+#!/bin/bash
+# Make not silently ignore errors.
+set -euo pipefail
+
+# Load the Rust startup file, if it exists.
+if [ -f "$HOME/.cargo/env" ]; then
+    . "$HOME/.cargo/env"
+fi
+
+# Use this wrapper for `cargo` if network access is needed.
+cargo-online () { cargo --locked "$@"; }
+
+# Use this wrapper for `cargo` unless network access is needed.
+cargo-offline () { cargo --frozen --offline "$@"; }
+
+# Use this wrapper for formatting code or checking that code is formatted. We use a nightly Rust
+# version for the `trailing_comma` formatting option [tag:rust_fmt_nightly_2025-11-02]. The
+# nightly version was chosen as the latest available release with all components present
+# according to this page:
+#   https://rust-lang.github.io/rustup-components-history/x86_64-unknown-linux-gnu.html
+cargo-fmt () { cargo +nightly-2025-11-02 --frozen --offline fmt --all -- "$@"; }
+
+# Make Bash log commands.
+set -x
+
+# Install the following packages:
+#
+# - build-essential       - Used to link some crates
+# - ca-certificates       - Used for fetching Docker's GPG key
+# - curl                  - Used for installing Docker, Tagref, and Rust
+# - gcc-aarch64-linux-gnu - Used for linking the binary for AArch64
+# - gcc-x86-64-linux-gnu  - Used for linking the binary for x86-64
+# - gnupg                 - Used to install Docker's GPG key
+# - lsb-release           - Used below to determine the Ubuntu release codename
+# - ripgrep               - Used for various linting tasks
+# - shellcheck            - Used for linting shell scripts
+apt-get update
+apt-get install --yes \
+    build-essential \
+    ca-certificates \
+    curl \
+    gcc-aarch64-linux-gnu \
+    gcc-x86-64-linux-gnu \
+    gnupg \
+    lsb-release \
+    ripgrep \
+    shellcheck
+
+# Download Docker's official GPG key.
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+    gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Set up the Docker repository.
+echo \
+    "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] \
+    https://download.docker.com/linux/ubuntu \
+    "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+    tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install the Docker CLI.
+apt-get update
+apt-get install --yes docker-ce-cli
+
+
+# Install Tagref using the official installer script.
+curl https://raw.githubusercontent.com/stepchowfun/tagref/main/install.sh -LSfs | sh
+
+# Install stable Rust [tag:rust_1.91.0].
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
+    -y \
+    --default-toolchain 1.91.0 \
+    --profile minimal \
+    --component clippy
+
+# Add Rust tools to `$PATH`.
+. "$HOME/.cargo/env"
+
+# Install nightly Rust [ref:rust_fmt_nightly_2025-11-02].
+rustup toolchain install nightly-2025-11-02 --profile minimal --component rustfmt
+
+
+# Create a "hello world" project with the dependencies we want to fetch.
+mv Cargo.lock Cargo.lock.og
+mv Cargo.toml Cargo.toml.og
+cargo-offline init --vcs none
+mv Cargo.lock.og Cargo.lock
+mv Cargo.toml.og Cargo.toml
+
+# Ask Cargo to build the project in order to fetch the dependencies.
+cargo-online build
+cargo-online build --release
+cargo-online clippy --all-features --all-targets --workspace
+
+# Delete the build artifacts.
+cargo-offline clean --package docuum
+cargo-offline clean --release --package docuum
+
+# Delete the "hello world" code.
+rm -rf src
+
+
+# Build the project with Cargo.
+cargo-offline build
+
+
+# Run the tests with Cargo. The `NO_COLOR` variable is used to disable colored output for
+# tests that make assertions regarding the output [tag:colorless_tests].
+NO_COLOR=true cargo-offline test
+
+
+# Check references with Tagref.
+tagref
+
+# Lint shell files with ShellCheck.
+find . -type f -name '*.sh' | xargs shellcheck
+
+# Lint the code with Clippy.
+cargo-offline clippy --all-features --all-targets --workspace
+
+# Check code formatting with Rustfmt. See [ref:format_macros] for an explanation of the `rg`
+# commands.
+rg --type rust --files-with-matches '' src | xargs sed -i 's/!(/_(/g'
+rg --type rust --files-with-matches '' src | xargs sed -i 's/^\([^ (]*\)_(/\1!(/g'
+if ! cargo-fmt --check; then
+    echo 'ERROR: Please correct the formatting errors above.' 1>&2
+    exit 1
+fi
+rg --type rust --files-with-matches '' src | xargs sed -i 's/_(/!(/g'
+
+# Forbid unconsolidated `use` declarations.
+if rg --line-number --type rust --multiline '}[[:space]]*;[[:space:]]*\n[[:space:]]*use' src
+then
+    echo 'Please consolidate these `use` declarations.' >&2
+    exit 1
+fi
+
+# Enforce that lines span no more than 100 columns.
+if rg --line-number --type rust '.{101}' src; then
+    echo 'There are lines spanning more than 100 columns.' >&2
+    exit 1
+fi
+
+
+# Add the targets.
+rustup target add x86_64-unknown-linux-gnu
+rustup target add x86_64-unknown-linux-musl
+rustup target add aarch64-unknown-linux-gnu
+rustup target add aarch64-unknown-linux-musl
+
+# Set the linkers.
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-gnu-gcc
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
+
+# Build the project with Cargo for each Linux target.
+cargo-online build --release --target x86_64-unknown-linux-gnu
+cargo-online build --release --target x86_64-unknown-linux-musl
+cargo-online build --release --target aarch64-unknown-linux-gnu
+cargo-online build --release --target aarch64-unknown-linux-musl
+
+# Move the binaries to a more conveniennt location for exporting.
+mkdir artifacts
+cp \
+    target/x86_64-unknown-linux-gnu/release/docuum \
+    artifacts/docuum-x86_64-unknown-linux-gnu
+cp \
+    target/x86_64-unknown-linux-musl/release/docuum \
+    artifacts/docuum-x86_64-unknown-linux-musl
+cp \
+    target/aarch64-unknown-linux-gnu/release/docuum \
+    artifacts/docuum-aarch64-unknown-linux-gnu
+cp \
+    target/aarch64-unknown-linux-musl/release/docuum \
+    artifacts/docuum-aarch64-unknown-linux-musl
+
+
+# This will be called when the task finishes, regardless of whether it succeeded.
+function cleanup {
+    # Delete the container created below to run the integration tests.
+    docker rm --force dind
+}
+trap cleanup EXIT
+
+# Run the integration test suite [tag:integration_test_step]. We use a Docker-in-Docker
+# environment to run the suite because we don't want to inadvertently delete images from the
+# host machine.
+docker run \
+    --privileged \
+    --name dind \
+    --detach \
+    docker:dind
+docker exec dind apk add bash
+docker cp "artifacts/docuum-x86_64-unknown-linux-musl" dind:/
+docker cp integration-test.sh dind:/
+docker exec dind ./integration-test.sh
+
+
+# Run the program with Cargo.
+cargo-offline run -- --help
