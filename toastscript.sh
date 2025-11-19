@@ -64,7 +64,7 @@ rustup toolchain install nightly-2025-11-02 --profile minimal --component rustfm
 
 
 # Build the project with Cargo.
-cargo-offline build
+cargo-online build
 
 
 # Run the tests with Cargo. The `NO_COLOR` variable is used to disable colored output for
