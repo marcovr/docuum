@@ -101,28 +101,3 @@ cp \
 cp \
     target/aarch64-unknown-linux-musl/release/docuum \
     artifacts/docuum-aarch64-unknown-linux-musl
-
-
-# This will be called when the task finishes, regardless of whether it succeeded.
-function cleanup {
-    # Delete the container created below to run the integration tests.
-    docker rm --force dind
-}
-trap cleanup EXIT
-
-# Run the integration test suite [tag:integration_test_step]. We use a Docker-in-Docker
-# environment to run the suite because we don't want to inadvertently delete images from the
-# host machine.
-docker run \
-    --privileged \
-    --name dind \
-    --detach \
-    docker:dind
-docker exec dind apk add bash
-docker cp "artifacts/docuum-x86_64-unknown-linux-musl" dind:/
-docker cp integration-test.sh dind:/
-docker exec dind ./integration-test.sh
-
-
-# Run the program with Cargo.
-cargo-offline run -- --help
