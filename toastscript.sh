@@ -46,24 +46,6 @@ apt-get install --yes \
     ripgrep \
     shellcheck
 
-# Download Docker's official GPG key.
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-
-# Set up the Docker repository.
-echo \
-    "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] \
-    https://download.docker.com/linux/ubuntu \
-    "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-    tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Install the Docker CLI.
-apt-get update
-apt-get install --yes docker-ce-cli
-
-
 # Install Tagref using the official installer script.
 curl https://raw.githubusercontent.com/stepchowfun/tagref/main/install.sh -LSfs | sh
 
@@ -79,26 +61,6 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
 
 # Install nightly Rust [ref:rust_fmt_nightly_2025-11-02].
 rustup toolchain install nightly-2025-11-02 --profile minimal --component rustfmt
-
-
-# Create a "hello world" project with the dependencies we want to fetch.
-mv Cargo.lock Cargo.lock.og
-mv Cargo.toml Cargo.toml.og
-cargo-offline init --vcs none
-mv Cargo.lock.og Cargo.lock
-mv Cargo.toml.og Cargo.toml
-
-# Ask Cargo to build the project in order to fetch the dependencies.
-cargo-online build
-cargo-online build --release
-cargo-online clippy --all-features --all-targets --workspace
-
-# Delete the build artifacts.
-cargo-offline clean --package docuum
-cargo-offline clean --release --package docuum
-
-# Delete the "hello world" code.
-rm -rf src
 
 
 # Build the project with Cargo.
